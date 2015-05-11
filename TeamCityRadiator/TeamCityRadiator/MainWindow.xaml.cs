@@ -36,7 +36,9 @@ namespace TeamCityRadiator
         private void Button_Click_1(object sender, RoutedEventArgs e)
         {
             var projectsRestPath = AddressBox.Text + @"/guestAuth/app/rest/projects";
-            GetPOSTResponse(new Uri(projectsRestPath));
+            var buildTypesRestPath = AddressBox.Text + @"/guestAuth/app/rest/buildTypes";
+            FillControlItemsViaRestCall(new Uri(projectsRestPath),ProjectsListBox,"project");
+            FillControlItemsViaRestCall(new Uri(buildTypesRestPath), BuildTypesListBox, "buildType");
         }
 
        public class ProjectInfo
@@ -58,7 +60,7 @@ namespace TeamCityRadiator
             public bool IsSelected { get; set; }
         }
 
-        private void GetPOSTResponse(Uri uri)
+        private void FillControlItemsViaRestCall(Uri uri,ItemsControl control,string descendandsToFetch)
         {
             HttpWebRequest request = (HttpWebRequest)HttpWebRequest.Create(uri);
 
@@ -66,19 +68,19 @@ namespace TeamCityRadiator
 
             System.Text.UTF8Encoding encoding = new System.Text.UTF8Encoding();
             XDocument xmlDoc = new XDocument();
-                using (WebResponse response = request.GetResponse())
-                {
-                    xmlDoc = XDocument.Load(response.GetResponseStream());             
-                }
-                _projectsData = xmlDoc.Descendants("project").Select(p => new ProjectInfo(p.Attribute("id").Value, p.Attribute("webUrl").Value, false)).ToList();
-                ProjectsListBox.ItemsSource = _projectsData;
-                
+            using (WebResponse response = request.GetResponse())
+            {
+                xmlDoc = XDocument.Load(response.GetResponseStream());
+            }
+            _projectsData = xmlDoc.Descendants(descendandsToFetch).Select(bt => new ProjectInfo(bt.Attribute("id").Value, bt.Attribute("href").Value, false)).ToList();
+            control.ItemsSource = _projectsData;
+
         }
 
         private void Button_Click_2(object sender, RoutedEventArgs e)
-        {            
-            
-            ApplyChangesButton.IsEnabled = false;
+        {
+
+            (sender as Button).IsEnabled = false;
         }
 
         private void CheckBox_Checked(object sender, RoutedEventArgs e)
@@ -93,12 +95,9 @@ namespace TeamCityRadiator
 
         void Handle(CheckBox checkBox)
         {
-            ApplyChangesButton.IsEnabled = true;
-        }
-
-        public void ListChanged(object sender, EventArgs e)
-        {
-            ApplyChangesButton.IsEnabled = true;
+            if (ProjectsListBox.Items.Contains(checkBox.DataContext))
+                ApplyChangesButton.IsEnabled = true;
+            else ApplyChangesButton2.IsEnabled = true;
         }
     }
 }
