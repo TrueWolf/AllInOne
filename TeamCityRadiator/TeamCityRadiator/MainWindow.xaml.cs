@@ -1,26 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Net;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
-using System.Net;
-using System.IO;
-using System.Xml;
 using System.Xml.Linq;
 
 namespace TeamCityRadiator
 {
     /// <summary>
-    /// Interaction logic for MainWindow.xaml
+    ///     Interaction logic for MainWindow.xaml
     /// </summary>
     public partial class MainWindow : Window
     {
@@ -33,54 +23,85 @@ namespace TeamCityRadiator
             InitializeComponent();
         }
 
-        private void Button_Click_1(object sender, RoutedEventArgs e)
+        private void ConnectToServer(object sender, RoutedEventArgs e)
         {
-            var projectsRestPath = AddressBox.Text + @"/guestAuth/app/rest/projects";
-            var buildTypesRestPath = AddressBox.Text + @"/guestAuth/app/rest/buildTypes";
-            FillControlItemsViaRestCall(new Uri(projectsRestPath),ProjectsListBox,"project");
-            FillControlItemsViaRestCall(new Uri(buildTypesRestPath), BuildTypesListBox, "buildType");
+            string projectsRestPath = AddressBox.Text + @"/guestAuth/app/rest/projects";
+            string buildTypesRestPath = AddressBox.Text + @"/guestAuth/app/rest/buildTypes";
+            FillControlItemsViaRestCall(projectsRestPath, ProjectsListBox, "project");
+            FillControlItemsViaRestCall(buildTypesRestPath, BuildTypesListBox, "buildType");
         }
 
-       public class ProjectInfo
+        private void FillControlItemsViaRestCall(string uri, ItemsControl control, string descendandsToFetch)
         {
-            public ProjectInfo()
-            {
-
-            }
-
-            public ProjectInfo(string name,string webUrl,bool isSelected) : this()
-            {
-                Name = name;
-                WebUrl = webUrl;
-                IsSelected = isSelected;
-            }
-
-            public string Name {get;set;}
-            public string WebUrl { get; set; }
-            public bool IsSelected { get; set; }
+            XDocument xmlDoc = HttpGetRequest(uri);
+            _projectsData =
+                xmlDoc.Descendants(descendandsToFetch)
+                    .Select(bt => new ProjectInfo(bt.Attribute("id").Value, bt.Attribute("href").Value, false))
+                    .ToList();
+            control.ItemsSource = _projectsData;
         }
 
-        private void FillControlItemsViaRestCall(Uri uri,ItemsControl control,string descendandsToFetch)
+        private static XDocument HttpGetRequest(string uri)
         {
-            HttpWebRequest request = (HttpWebRequest)HttpWebRequest.Create(uri);
+            var request = (HttpWebRequest) WebRequest.Create(new Uri(uri));
 
             request.Method = "GET";
-
-            System.Text.UTF8Encoding encoding = new System.Text.UTF8Encoding();
-            XDocument xmlDoc = new XDocument();
-            using (WebResponse response = request.GetResponse())
+            var xmlDoc = new XDocument();
+            try
             {
-                xmlDoc = XDocument.Load(response.GetResponseStream());
+                using (WebResponse response = request.GetResponse())
+                {
+                    xmlDoc = XDocument.Load(response.GetResponseStream());
+                }
             }
-            _projectsData = xmlDoc.Descendants(descendandsToFetch).Select(bt => new ProjectInfo(bt.Attribute("id").Value, bt.Attribute("href").Value, false)).ToList();
-            control.ItemsSource = _projectsData;
-
+            catch (WebException e)
+            {
+                MessageBox.Show(e.Message);
+            }
+            return xmlDoc;
         }
 
         private void Button_Click_2(object sender, RoutedEventArgs e)
         {
+            var button = (sender as Button);
+            button.IsEnabled = false;
+            if (button.Name.Equals("ApplyChangesProjects"))
+            {
+                foreach (ProjectInfo item in ProjectsListBox.Items)
+                {
+                    if (item.IsSelected == true)
+                    {
 
-            (sender as Button).IsEnabled = false;
+                    }
+                }
+            }
+            else if (button.Name.Equals("ApplyChangesBTypes"))
+            {
+                SelectedBuildTypesListBox.Items.Clear();
+                foreach (ProjectInfo item in BuildTypesListBox.Items)
+                {
+                    if (item.IsSelected)
+                    {
+                        string buildsUrl = AddressBox.Text + item.WebUrl + "/builds";
+                        XDocument responseXml = HttpGetRequest(buildsUrl);
+                        XElement lastBuild = responseXml.Descendants("build").FirstOrDefault();
+                        var label = new Label();
+                        label.Margin = new Thickness(10);
+                        label.Foreground = Brushes.AliceBlue;
+                        if (lastBuild == null)
+                        {
+                            label.Content = item.Name+": No builds yet runned for this configuration.";
+                            label.Background = Brushes.Gray;
+                        }
+                        else
+                        {
+                            label.Content = item.Name + " " + lastBuild.Attribute("number") + ": " + lastBuild.Attribute("status");
+                            label.Background = lastBuild.Attribute("status").Value == "SUCCESS" ? Brushes.Green : Brushes.Red;
+                        }
+                        SelectedBuildTypesListBox.Items.Add(label);
+                    }
+                }
+            }
         }
 
         private void CheckBox_Checked(object sender, RoutedEventArgs e)
@@ -93,11 +114,29 @@ namespace TeamCityRadiator
             Handle(sender as CheckBox);
         }
 
-        void Handle(CheckBox checkBox)
+        private void Handle(CheckBox checkBox)
         {
             if (ProjectsListBox.Items.Contains(checkBox.DataContext))
-                ApplyChangesButton.IsEnabled = true;
-            else ApplyChangesButton2.IsEnabled = true;
+                ApplyChangesProjects.IsEnabled = true;
+            else ApplyChangesBTypes.IsEnabled = true;
+        }
+
+        public class ProjectInfo
+        {
+            public ProjectInfo()
+            {
+            }
+
+            public ProjectInfo(string name, string webUrl, bool isSelected) : this()
+            {
+                Name = name;
+                WebUrl = webUrl;
+                IsSelected = isSelected;
+            }
+
+            public string Name { get; set; }
+            public string WebUrl { get; set; }
+            public bool IsSelected { get; set; }
         }
     }
 }
